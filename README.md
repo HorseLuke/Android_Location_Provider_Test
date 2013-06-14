@@ -8,11 +8,16 @@ Android_Location_Provider_Test
 
 由于有厂商博弈与大环境因素的复杂情况，国行安卓手机/平板的“网络定位”有许多是不能正常工作的，这带来的后果是包括HTML5网络定位不能正常工作等。
 
-虽然有各种教程帖均提及恢复“NetworkLocation.apk”等方式恢复所谓的GMS服务（Google Mobile Services），但如果相关文件没有使用对应的platform证书签名，或者和rom中其它platform签名级别的apk签名不相同，其实均不能使用。这个验证过程很费周折。
+虽然有各种教程帖均提及恢复“NetworkLocation.apk”等方式恢复所谓的GMS服务（Google Mobile Services）中的网络定位，但如果相关文件没有使用对应的platform证书签名，或者和rom中其它platform签名级别的apk签名不相同，其实均不能使用。这个验证过程很费周折。
 
 本应用则提供一种辅助检查的思路，当前只有检查Android 4.0.x及以下版本的网络定位是否初始化正常。不能正常初始化的话，则“网络定位”一定无法工作。
 
-请注意：初始化检测通过后，如果是使用GMS提供的网络定位功能（也就是传说中的NetworkLocation.apk），而GMS的其它组件存在损坏或者版本不一致，也一样不能使用。
+请注意：初始化检测通过后，如果是使用GMS提供的网络定位功能（也就是传说中的NetworkLocation.apk），而GMS的其它组件存在损坏或者版本不一致，也一样不能使用，这部分暂不属于本应用的检测范围。
+
+apk下载（此处仅提供源代码和相关文档）
+==
+http://pan.baidu.com/share/link?shareid=2926622959&uk=1778678609
+
 
 致谢和代码
 ==
