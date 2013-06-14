@@ -1,0 +1,140 @@
+//https://android.googlesource.com/platform/frameworks/base/+/android-4.1.2_r2/services/java/com/android/server/LocationManagerService.java
+    
+    /**
+     * @param context the context that the LocationManagerService runs in
+     */
+    public LocationManagerService(Context context) {
+        super();
+        mContext = context;
+        Resources resources = context.getResources();
+
+        mNetworkLocationProviderPackageName = resources.getString(
+                com.android.internal.R.string.config_networkLocationProviderPackageName);
+        mGeocodeProviderPackageName = resources.getString(
+                com.android.internal.R.string.config_geocodeProviderPackageName);
+
+        mPackageMonitor.register(context, null, true);
+
+        if (LOCAL_LOGV) {
+            Slog.v(TAG, "Constructed LocationManager Service");
+        }
+    }
+
+    private void loadProvidersLocked() {
+        try {
+            _loadProvidersLocked();
+        } catch (Exception e) {
+            Slog.e(TAG, "Exception loading providers:", e);
+        }
+    }
+
+    private void _loadProvidersLocked() {
+        // Attempt to load "real" providers first
+        if (GpsLocationProvider.isSupported()) {
+            // Create a gps location provider
+            GpsLocationProvider gpsProvider = new GpsLocationProvider(mContext, this);
+            mGpsStatusProvider = gpsProvider.getGpsStatusProvider();
+            mNetInitiatedListener = gpsProvider.getNetInitiatedListener();
+            addProvider(gpsProvider);
+            mGpsLocationProvider = gpsProvider;
+        }
+
+        // create a passive location provider, which is always enabled
+        PassiveProvider passiveProvider = new PassiveProvider(this);
+        addProvider(passiveProvider);
+        mEnabledProviders.add(passiveProvider.getName());
+
+        // initialize external network location and geocoder services.
+        // The initial value of mNetworkLocationProviderPackageName and
+        // mGeocodeProviderPackageName is just used to determine what
+        // signatures future mNetworkLocationProviderPackageName and
+        // mGeocodeProviderPackageName packages must have. So alternate
+        // providers can be installed under a different package name
+        // so long as they have the same signature as the original
+        // provider packages.
+        if (mNetworkLocationProviderPackageName != null) {
+            String packageName = findBestPackage(LocationProviderProxy.SERVICE_ACTION,
+                    mNetworkLocationProviderPackageName);
+            if (packageName != null) {
+                mNetworkLocationProvider = new LocationProviderProxy(mContext,
+                        LocationManager.NETWORK_PROVIDER,
+                        packageName, mLocationHandler);
+                mNetworkLocationProviderPackageName = packageName;
+                addProvider(mNetworkLocationProvider);
+            }
+        }
+        if (mGeocodeProviderPackageName != null) {
+            String packageName = findBestPackage(GeocoderProxy.SERVICE_ACTION,
+                    mGeocodeProviderPackageName);
+            if (packageName != null) {
+                mGeocodeProvider = new GeocoderProxy(mContext, packageName);
+                mGeocodeProviderPackageName = packageName;
+            }
+        }
+
+        updateProvidersLocked();
+    }
+    
+    /**
+     * Pick the best (network location provider or geocode provider) package.
+     * The best package:
+     * - implements serviceIntentName
+     * - has signatures that match that of sigPackageName
+     * - has the highest version value in a meta-data field in the service component
+     */
+    String findBestPackage(String serviceIntentName, String sigPackageName) {
+    
+    	//找出带有serviceIntentName的packagename
+    	
+        Intent intent = new Intent(serviceIntentName);
+        List<ResolveInfo> infos = mPackageManager.queryIntentServices(intent,
+                PackageManager.GET_META_DATA);
+        if (infos == null) return null;
+
+        int bestVersion = Integer.MIN_VALUE;
+        String bestPackage = null;
+        for (ResolveInfo info : infos) {
+            String packageName = info.serviceInfo.packageName;
+            // check signature
+            if (mPackageManager.checkSignatures(packageName, sigPackageName) !=
+                    PackageManager.SIGNATURE_MATCH) {
+                Slog.w(TAG, packageName + " implements " + serviceIntentName +
+                       " but its signatures don't match those in " + sigPackageName +
+                       ", ignoring");
+                continue;
+            }
+            // read version
+            int version = 0;
+            if (info.serviceInfo.metaData != null) {
+                version = info.serviceInfo.metaData.getInt("version", 0);
+            }
+            if (LOCAL_LOGV) Slog.v(TAG, packageName + " implements " + serviceIntentName +
+                    " with version " + version);
+            if (version > bestVersion) {
+                bestVersion = version;
+                bestPackage = packageName;
+            }
+        }
+
+        return bestPackage;
+    }    
+
+    
+//https://android.googlesource.com/platform/frameworks/base/+/android-4.1.2_r2/services/java/com/android/server/location/LocationProviderProxy.java
+    
+public class LocationProviderProxy implements LocationProviderInterface {
+
+    private static final String TAG = "LocationProviderProxy";
+
+    public static final String SERVICE_ACTION =
+        "com.android.location.service.NetworkLocationProvider";
+        
+}
+
+
+//https://android.googlesource.com/platform/frameworks/base/+/android-4.1.2_r2/core/res/res/values/config.xml
+    <!-- Package name providing network location support. -->
+    <string name="config_networkLocationProviderPackageName" translatable="false">@null</string>
+
+    <!-- Package name providing geocoder API support. -->
+    <string name="config_geocodeProviderPackageName" translatable="false">@null</string>

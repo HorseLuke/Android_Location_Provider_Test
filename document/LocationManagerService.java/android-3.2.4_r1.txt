@@ -1,0 +1,61 @@
+//https://android.googlesource.com/platform/frameworks/base/+/android-3.2.4_r1/services/java/com/android/server/LocationManagerService.java
+
+    /**
+     * @param context the context that the LocationManagerService runs in
+     */
+    public LocationManagerService(Context context) {
+        super();
+        mContext = context;
+        Resources resources = context.getResources();
+        mNetworkLocationProviderPackageName = resources.getString(
+                com.android.internal.R.string.config_networkLocationProvider);
+        mGeocodeProviderPackageName = resources.getString(
+                com.android.internal.R.string.config_geocodeProvider);
+        mPackageMonitor.register(context, true);
+
+        if (LOCAL_LOGV) {
+            Slog.v(TAG, "Constructed LocationManager Service");
+        }
+    }
+
+    private void _loadProvidersLocked() {
+        // Attempt to load "real" providers first
+        if (GpsLocationProvider.isSupported()) {
+            // Create a gps location provider
+            GpsLocationProvider gpsProvider = new GpsLocationProvider(mContext, this);
+            mGpsStatusProvider = gpsProvider.getGpsStatusProvider();
+            mNetInitiatedListener = gpsProvider.getNetInitiatedListener();
+            addProvider(gpsProvider);
+            mGpsLocationProvider = gpsProvider;
+        }
+
+        // create a passive location provider, which is always enabled
+        PassiveProvider passiveProvider = new PassiveProvider(this);
+        addProvider(passiveProvider);
+        mEnabledProviders.add(passiveProvider.getName());
+
+        // initialize external network location and geocoder services
+        PackageManager pm = mContext.getPackageManager();
+        if (mNetworkLocationProviderPackageName != null &&
+                pm.resolveService(new Intent(mNetworkLocationProviderPackageName), 0) != null) {
+            mNetworkLocationProvider =
+                new LocationProviderProxy(mContext, LocationManager.NETWORK_PROVIDER,
+                        mNetworkLocationProviderPackageName, mLocationHandler);
+            addProvider(mNetworkLocationProvider);
+        }
+
+        if (mGeocodeProviderPackageName != null &&
+                pm.resolveService(new Intent(mGeocodeProviderPackageName), 0) != null) {
+            mGeocodeProvider = new GeocoderProxy(mContext, mGeocodeProviderPackageName);
+        }
+
+        updateProvidersLocked();
+    }
+    
+    
+//https://android.googlesource.com/platform/frameworks/base/+/android-3.2.4_r1/core/res/res/values/config.xml
+    <!-- Component name of the service providing network location support. -->
+    <string name="config_networkLocationProvider">@null</string>
+
+    <!-- Component name of the service providing geocoder API support. -->
+    <string name="config_geocodeProvider">@null</string>    

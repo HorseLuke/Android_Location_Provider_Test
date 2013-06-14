@@ -1,0 +1,2 @@
+//http://forum.xda-developers.com/showthread.php?p=35370242
+According to android source code (FusedLocationProvider), Fused Location is actually a location service which combines GPS location and network location to achieve balance between battery consumption and accuracy.

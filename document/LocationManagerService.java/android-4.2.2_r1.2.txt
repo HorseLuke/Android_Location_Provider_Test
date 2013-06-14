@@ -1,0 +1,177 @@
+https://android.googlesource.com/platform/frameworks/base/+/android-4.2.2_r1.2/services/java/com/android/server/LocationManagerService.java
+
+
+
+    private static final String NETWORK_LOCATION_SERVICE_ACTION =
+            "com.android.location.service.v2.NetworkLocationProvider";
+    private static final String FUSED_LOCATION_SERVICE_ACTION =
+            "com.android.location.service.FusedLocationProvider";
+            
+
+    private void loadProvidersLocked() {
+        // create a passive location provider, which is always enabled
+        PassiveProvider passiveProvider = new PassiveProvider(this);
+        addProviderLocked(passiveProvider);
+        mEnabledProviders.add(passiveProvider.getName());
+        mPassiveProvider = passiveProvider;
+
+        if (GpsLocationProvider.isSupported()) {
+            // Create a gps location provider
+            GpsLocationProvider gpsProvider = new GpsLocationProvider(mContext, this);
+            mGpsStatusProvider = gpsProvider.getGpsStatusProvider();
+            mNetInitiatedListener = gpsProvider.getNetInitiatedListener();
+            addProviderLocked(gpsProvider);
+            mRealProviders.put(LocationManager.GPS_PROVIDER, gpsProvider);
+        }
+
+        /*
+        Load package name(s) containing location provider support.
+        These packages can contain services implementing location providers:
+        Geocoder Provider, Network Location Provider, and
+        Fused Location Provider. They will each be searched for
+        service components implementing these providers.
+        The location framework also has support for installation
+        of new location providers at run-time. The new package does not
+        have to be explicitly listed here, however it must have a signature
+        that matches the signature of at least one package on this list.
+        */
+        Resources resources = mContext.getResources();
+        ArrayList<String> providerPackageNames = new ArrayList<String>();
+        String[] pkgs = resources.getStringArray(
+                com.android.internal.R.array.config_locationProviderPackageNames);
+        if (D) Log.d(TAG, "certificates for location providers pulled from: " +
+                Arrays.toString(pkgs));
+        if (pkgs != null) providerPackageNames.addAll(Arrays.asList(pkgs));
+
+        ensureFallbackFusedProviderPresentLocked(providerPackageNames);
+
+        // bind to network provider
+        LocationProviderProxy networkProvider = LocationProviderProxy.createAndBind(
+                mContext,
+                LocationManager.NETWORK_PROVIDER,
+                NETWORK_LOCATION_SERVICE_ACTION,
+                providerPackageNames, mLocationHandler, mCurrentUserId);
+        if (networkProvider != null) {
+            mRealProviders.put(LocationManager.NETWORK_PROVIDER, networkProvider);
+            mProxyProviders.add(networkProvider);
+            addProviderLocked(networkProvider);
+        } else {
+            Slog.w(TAG,  "no network location provider found");
+        }
+
+        // bind to fused provider
+        LocationProviderProxy fusedLocationProvider = LocationProviderProxy.createAndBind(
+                mContext,
+                LocationManager.FUSED_PROVIDER,
+                FUSED_LOCATION_SERVICE_ACTION,
+                providerPackageNames, mLocationHandler, mCurrentUserId);
+        if (fusedLocationProvider != null) {
+            addProviderLocked(fusedLocationProvider);
+            mProxyProviders.add(fusedLocationProvider);
+            mEnabledProviders.add(fusedLocationProvider.getName());
+            mRealProviders.put(LocationManager.FUSED_PROVIDER, fusedLocationProvider);
+        } else {
+            Slog.e(TAG, "no fused location provider found",
+                    new IllegalStateException("Location service needs a fused location provider"));
+        }
+
+        // bind to geocoder provider
+        mGeocodeProvider = GeocoderProxy.createAndBind(mContext, providerPackageNames,
+                mCurrentUserId);
+        if (mGeocodeProvider == null) {
+            Slog.e(TAG,  "no geocoder provider found");
+        }
+    }
+    
+    
+    private void ensureFallbackFusedProviderPresentLocked(ArrayList<String> pkgs) {
+        PackageManager pm = mContext.getPackageManager();
+        String systemPackageName = mContext.getPackageName();
+        ArrayList<HashSet<Signature>> sigSets = ServiceWatcher.getSignatureSets(mContext, pkgs);
+
+        List<ResolveInfo> rInfos = pm.queryIntentServicesAsUser(
+                new Intent(FUSED_LOCATION_SERVICE_ACTION),
+                PackageManager.GET_META_DATA, mCurrentUserId);
+        for (ResolveInfo rInfo : rInfos) {
+            String packageName = rInfo.serviceInfo.packageName;
+
+            // Check that the signature is in the list of supported sigs. If it's not in
+            // this list the standard provider binding logic won't bind to it.
+            try {
+                PackageInfo pInfo;
+                pInfo = pm.getPackageInfo(packageName, PackageManager.GET_SIGNATURES);
+                if (!ServiceWatcher.isSignatureMatch(pInfo.signatures, sigSets)) {
+                    Log.w(TAG, packageName + " resolves service " + FUSED_LOCATION_SERVICE_ACTION +
+                            ", but has wrong signature, ignoring");
+                    continue;
+                }
+            } catch (NameNotFoundException e) {
+                Log.e(TAG, "missing package: " + packageName);
+                continue;
+            }
+
+            // Get the version info
+            if (rInfo.serviceInfo.metaData == null) {
+                Log.w(TAG, "Found fused provider without metadata: " + packageName);
+                continue;
+            }
+
+            int version = rInfo.serviceInfo.metaData.getInt(
+                    ServiceWatcher.EXTRA_SERVICE_VERSION, -1);
+            if (version == 0) {
+                // This should be the fallback fused location provider.
+
+                // Make sure it's in the system partition.
+                if ((rInfo.serviceInfo.applicationInfo.flags & ApplicationInfo.FLAG_SYSTEM) == 0) {
+                    if (D) Log.d(TAG, "Fallback candidate not in /system: " + packageName);
+                    continue;
+                }
+
+                // Check that the fallback is signed the same as the OS
+                // as a proxy for coreApp="true"
+                if (pm.checkSignatures(systemPackageName, packageName)
+                        != PackageManager.SIGNATURE_MATCH) {
+                    if (D) Log.d(TAG, "Fallback candidate not signed the same as system: "
+                            + packageName);
+                    continue;
+                }
+
+                // Found a valid fallback.
+                if (D) Log.d(TAG, "Found fallback provider: " + packageName);
+                return;
+            } else {
+                if (D) Log.d(TAG, "Fallback candidate not version 0: " + packageName);
+            }
+        }
+
+        throw new IllegalStateException("Unable to find a fused location provider that is in the "
+                + "system partition with version 0 and signed with the platform certificate. "
+                + "Such a package is needed to provide a default fused location provider in the "
+                + "event that no other fused location provider has been installed or is currently "
+                + "available. For example, coreOnly boot mode when decrypting the data "
+                + "partition. The fallback must also be marked coreApp=\"true\" in the manifest");
+    }
+    
+    
+//https://android.googlesource.com/platform/frameworks/base/+/android-4.2.2_r1.2/core/res/res/values/config.xml
+
+    <!-- Package name(s) containing location provider support.
+         These packages can contain services implementing location providers,
+         such as the Geocode Provider, Network Location Provider, and
+         Fused Location Provider. They will each be searched for
+         service components implementing these providers.
+         It is strongly recommended that the packages explicitly named
+         below are on the system image, so that they will not map to
+         a 3rd party application.
+         The location framework also has support for installation
+         of new location providers at run-time. The new package does not
+         have to be explicitly listed here, however it must have a signature
+         that matches the signature of at least one package on this list.
+         -->
+    <string-array name="config_locationProviderPackageNames" translatable="false">
+        <!-- The standard AOSP fused location provider -->
+        <item>com.android.location.fused</item>
+    </string-array>
+
+
+    
