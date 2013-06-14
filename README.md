@@ -3,6 +3,10 @@ Android_Location_Provider_Test
 
 运行于安卓上，检测是否能正常初始化“网络定位”功能的小工具。
 
+<p>
+  <img src="https://raw.github.com/HorseLuke/Android_Location_Provider_Test/master/document/snapshot/android_4.0_networklocation_init_ok.png" >
+</p>
+
 简介
 ==
 
@@ -16,7 +20,7 @@ Android_Location_Provider_Test
 
 apk下载（此处仅提供源代码和相关文档）
 ==
-http://pan.baidu.com/share/link?shareid=2926622959&uk=1778678609
+http://pan.baidu.com/share/link?shareid=2984779727&uk=1778678609
 
 
 致谢和代码
